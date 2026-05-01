@@ -56,17 +56,17 @@ The dashboard never sends a full payload twice. Only changed sessions are pushed
 
 ## Screenshots
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  TOTAL TOKENS        INPUT           OUTPUT                 │
-│  3.54B               62.04M          12.10M                 │
-│  $5,858              $159.49         $539.87                │
-├─────────────────────────────────────────────────────────────┤
-│  CACHE READ          CACHE CREATE                           │
-│  3.36B               110.06M                                │
-│  $3,435              $1,724                                 │
-└─────────────────────────────────────────────────────────────┘
-```
+**Overview** — live KPIs with USD cost per token category, Claude Code vs Codex split, token composition bar
+![Overview](public/screenshots/overview.jpg)
+
+**Projects** — every project as a card with tokens, cost, composition bar and per-category breakdown
+![Projects](public/screenshots/projects.jpg)
+
+**Analysis** — Haiku-powered waste detection, per-project findings with severity, impact $ and apply button
+![Analysis](public/screenshots/analysis.jpg)
+
+**Charts** — daily token/cost bar chart (Today / 7 Days / 30 Days) and context file size inventory
+![Charts](public/screenshots/charts.jpg)
 
 ---
 

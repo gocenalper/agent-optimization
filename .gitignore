@@ -3,3 +3,5 @@ node_modules/
 *.log
 nohup.out
 *.bak
+screenshot.mjs
+node_modules/
