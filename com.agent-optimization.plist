@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agent-optimization</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>
+      # Start OrbStack if not running
+      open -a OrbStack 2>/dev/null || true
+      # Wait for Docker daemon (up to 60 s)
+      for i in $(seq 1 20); do
+        /usr/local/bin/docker info > /dev/null 2>&amp;1 &amp;&amp; break
+        sleep 3
+      done
+      cd /Users/USER_PLACEHOLDER/Desktop/agent-optimization
+      /usr/local/bin/docker compose up -d
+    </string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/agent-optimization-launch.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/agent-optimization-launch.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+  </dict>
+</dict>
+</plist>

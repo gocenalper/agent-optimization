@@ -1,0 +1,23 @@
+## Copy .env.example to .env and add your ANTHROPIC_API_KEY to enable LLM analysis.
+## Without it the app works fine but uses heuristic rules instead of Haiku.
+
+services:
+  agent-optimization:
+    build: .
+    image: agent-optimization:local
+    container_name: agent-optimization
+    restart: always
+    ports:
+      - "4317:4317"
+    environment:
+      - HOST_HOME=/host-home
+      - USE_POLLING=true
+    volumes:
+      # Full home dir at same logical path so actuator-written paths resolve correctly
+      - /Users/${USER}:/host-home:cached
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4317/api/wirestats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

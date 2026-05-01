@@ -1,0 +1,17 @@
+{
+  "name": "agent-optimization",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.123",
+    "@anthropic-ai/sdk": "^0.92.0",
+    "chokidar": "^3.6.0",
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  }
+}

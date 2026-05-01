@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent Optimization · Live Token Monitor</title>
+<link rel="stylesheet" href="/style.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="aurora">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2 L20 7 L20 17 L12 22 L4 17 L4 7 Z"/>
+          <path d="M12 2 L12 12 L20 17"/>
+          <path d="M12 12 L4 17"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Agent Optimization</h1>
+        <p class="sub">Live token monitor · Claude Code + Codex</p>
+      </div>
+    </div>
+    <nav class="tabs">
+      <a href="#/" class="tab" data-route="overview">Overview</a>
+      <a href="#/projects" class="tab" data-route="projects">Projects</a>
+      <a href="#/analysis" class="tab" data-route="analysis">Analysis</a>
+      <a href="#/charts" class="tab" data-route="charts">Charts</a>
+    </nav>
+    <div class="status">
+      <span class="dot" id="conn-dot"></span>
+      <span id="conn-text">connecting…</span>
+      <span class="sep">·</span>
+      <span id="last-update">—</span>
+    </div>
+  </header>
+
+  <main id="view-overview">
+    <!-- KPI ROW -->
+    <section class="kpis">
+      <div class="kpi grad-violet">
+        <div class="kpi-label">Total Tokens</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-meta"><span id="kpi-sessions">0</span> sessions tracked</div>
+      </div>
+      <div class="kpi grad-emerald">
+        <div class="kpi-label">Input</div>
+        <div class="kpi-value" id="kpi-input">—</div>
+        <div class="kpi-meta">fresh prompts</div>
+      </div>
+      <div class="kpi grad-amber">
+        <div class="kpi-label">Output</div>
+        <div class="kpi-value" id="kpi-output">—</div>
+        <div class="kpi-meta">model responses</div>
+      </div>
+      <div class="kpi grad-cyan">
+        <div class="kpi-label">Cache Read</div>
+        <div class="kpi-value" id="kpi-cacheread">—</div>
+        <div class="kpi-meta">savings hit</div>
+      </div>
+      <div class="kpi grad-rose">
+        <div class="kpi-label">Cache Create</div>
+        <div class="kpi-value" id="kpi-cachecreate">—</div>
+        <div class="kpi-meta">cache writes</div>
+      </div>
+    </section>
+
+    <!-- AGENT SPLIT -->
+    <section class="grid-2">
+      <div class="card agent-card claude">
+        <div class="card-head">
+          <div class="agent-icon">C</div>
+          <div>
+            <h2>Claude Code</h2>
+            <p class="muted"><span id="claude-sessions">0</span> sessions</p>
+          </div>
+          <div class="badge" id="claude-total">0</div>
+        </div>
+        <div class="bars" id="claude-bars"></div>
+      </div>
+
+      <div class="card agent-card codex">
+        <div class="card-head">
+          <div class="agent-icon">X</div>
+          <div>
+            <h2>Codex</h2>
+            <p class="muted"><span id="codex-sessions">0</span> sessions</p>
+          </div>
+          <div class="badge" id="codex-total">0</div>
+        </div>
+        <div class="bars" id="codex-bars"></div>
+      </div>
+    </section>
+
+    <!-- COMPOSITION -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Token Composition</h2>
+        <p class="muted">Distribution of all consumed tokens across categories</p>
+      </div>
+      <div class="composition-bar" id="composition-bar"></div>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <!-- SESSIONS TABLE -->
+    <section class="card">
+      <div class="card-head row">
+        <div>
+          <h2>Recent Sessions</h2>
+          <p class="muted">Sorted by latest activity · click a row to expand</p>
+        </div>
+        <div class="filters">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="claude">Claude</button>
+          <button class="chip" data-filter="codex">Codex</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="sessions">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Project</th>
+              <th>Model</th>
+              <th class="num">Input</th>
+              <th class="num">Output</th>
+              <th class="num">Cache R</th>
+              <th class="num">Cache W</th>
+              <th class="num">Total</th>
+              <th>Last Activity</th>
+            </tr>
+          </thead>
+          <tbody id="sessions-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <main id="view-projects" hidden>
+    <!-- PROJECTS LIST OR DETAIL -->
+    <section id="projects-list-wrap">
+      <div class="card-head row" style="margin-bottom: 18px; align-items:flex-end;">
+        <div>
+          <h2 style="font-size:20px; font-weight:700; letter-spacing:-0.02em;">Projects</h2>
+          <p class="muted">Project-level token consumption · click a card to drill into sessions</p>
+        </div>
+        <div class="filters">
+          <button class="chip active" data-pfilter="all">All</button>
+          <button class="chip" data-pfilter="claude">Claude</button>
+          <button class="chip" data-pfilter="codex">Codex</button>
+        </div>
+      </div>
+      <div class="projects-grid" id="projects-grid"></div>
+    </section>
+
+    <section id="project-detail" hidden>
+      <a href="#/projects" class="back-link">← Back to projects</a>
+
+      <div class="project-hero">
+        <div class="project-hero-head">
+          <div class="proj-icon" id="pd-icon">P</div>
+          <div style="flex:1; min-width:0;">
+            <h1 id="pd-name">—</h1>
+            <p id="pd-path" class="muted mono"></p>
+          </div>
+          <div class="project-hero-stats">
+            <div><div class="kpi-label">Sessions</div><div class="hero-stat" id="pd-sessions">—</div></div>
+            <div><div class="kpi-label">Total</div><div class="hero-stat" id="pd-total">—</div></div>
+          </div>
+        </div>
+
+        <div class="kpis" style="margin-top: 24px;">
+          <div class="kpi grad-emerald">
+            <div class="kpi-label">Input</div>
+            <div class="kpi-value" id="pd-input">—</div>
+            <div class="kpi-meta">fresh prompts</div>
+          </div>
+          <div class="kpi grad-amber">
+            <div class="kpi-label">Output</div>
+            <div class="kpi-value" id="pd-output">—</div>
+            <div class="kpi-meta">model responses</div>
+          </div>
+          <div class="kpi grad-cyan">
+            <div class="kpi-label">Cache Read</div>
+            <div class="kpi-value" id="pd-cacheread">—</div>
+            <div class="kpi-meta">savings hit</div>
+          </div>
+          <div class="kpi grad-rose">
+            <div class="kpi-label">Cache Create</div>
+            <div class="kpi-value" id="pd-cachecreate">—</div>
+            <div class="kpi-meta">cache writes</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <div class="card-head">
+            <h2>Composition</h2>
+            <p class="muted">Token distribution within this project</p>
+          </div>
+          <div class="composition-bar" id="pd-composition"></div>
+          <div class="legend" id="pd-legend"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 16px;">
+        <div class="card-head row">
+          <div>
+            <h2>Sessions in this project</h2>
+            <p class="muted" id="pd-session-count">—</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="sessions">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Session</th>
+                <th>Model</th>
+                <th class="num">Input</th>
+                <th class="num">Output</th>
+                <th class="num">Cache R</th>
+                <th class="num">Cache W</th>
+                <th class="num">Total</th>
+                <th>Started</th>
+                <th>Last Activity</th>
+              </tr>
+            </thead>
+            <tbody id="pd-sessions-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="view-analysis" hidden>
+    <section class="analysis-hero card">
+      <div class="card-head row" style="align-items:flex-start;">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <h2 style="font-size:20px; font-weight:700; letter-spacing:-0.02em;">Optimization Analysis</h2>
+            <span id="llm-badge" hidden class="llm-badge">✦ Haiku</span>
+            <span id="heuristic-badge" hidden class="heuristic-badge">⚙ Heuristic</span>
+          </div>
+          <p class="muted">Auto-runs every 2 hours · scans every project's sessions for wasteful patterns</p>
+        </div>
+        <div class="analysis-controls">
+          <div class="schedule-info">
+            <div class="kpi-label">Last run</div>
+            <div id="ana-last" class="schedule-val">—</div>
+          </div>
+          <div class="schedule-info">
+            <div class="kpi-label">Next run in</div>
+            <div id="ana-next" class="schedule-val">—</div>
+          </div>
+          <button id="ana-rerun" class="btn-primary">Run now</button>
+        </div>
+      </div>
+      <div class="ana-kpis">
+        <div class="ana-kpi">
+          <div class="kpi-label">Projects scanned</div>
+          <div class="ana-kpi-val" id="ana-projects">—</div>
+        </div>
+        <div class="ana-kpi">
+          <div class="kpi-label">Sessions analyzed</div>
+          <div class="ana-kpi-val" id="ana-sessions">—</div>
+        </div>
+        <div class="ana-kpi danger">
+          <div class="kpi-label">Estimated waste</div>
+          <div class="ana-kpi-val" id="ana-waste">—</div>
+          <div class="kpi-meta" id="ana-waste-pct">—</div>
+        </div>
+        <div class="ana-kpi">
+          <div class="kpi-label">Total spend</div>
+          <div class="ana-kpi-val" id="ana-spend">—</div>
+        </div>
+      </div>
+      <div class="ana-finding-tags" id="ana-tags"></div>
+    </section>
+
+    <div class="ana-source-tabs">
+      <button class="ana-tab active" data-asrc="all">All</button>
+      <button class="ana-tab" data-asrc="claude">
+        <span class="ana-tab-dot claude"></span>Claude Code
+      </button>
+      <button class="ana-tab" data-asrc="codex">
+        <span class="ana-tab-dot codex"></span>Codex
+      </button>
+      <span class="ana-tab-count" id="ana-tab-count"></span>
+    </div>
+
+    <section id="ana-project-list" class="ana-projects"></section>
+  </main>
+
+  <footer>
+    <span>Reading <code>~/.claude/projects</code> &amp; <code>~/.codex/sessions</code></span>
+    <span class="wire-stats" id="wire-stats">delta: <strong>—</strong></span>
+  </footer>
+
+  <main id="view-charts" hidden>
+    <section class="card chart-card">
+      <div class="card-head row">
+        <div>
+          <h2>Token &amp; Cost Usage</h2>
+          <p class="muted">Daily breakdown · Claude Code vs Codex</p>
+        </div>
+        <div class="chart-controls">
+          <div class="ctrl-group" id="usage-range">
+            <button class="ctrl-btn active" data-days="1">Today</button>
+            <button class="ctrl-btn" data-days="7">7 Days</button>
+            <button class="ctrl-btn" data-days="30">30 Days</button>
+          </div>
+          <div class="ctrl-group" id="usage-metric">
+            <button class="ctrl-btn active" data-metric="total">Tokens</button>
+            <button class="ctrl-btn" data-metric="cost">Cost</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-legend">
+        <span class="cleg claude"><span class="cleg-dot"></span>Claude Code</span>
+        <span class="cleg codex"><span class="cleg-dot"></span>Codex</span>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-usage"></canvas></div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card chart-card">
+        <div class="card-head">
+          <h2>Claude Code context files</h2>
+          <p class="muted">CLAUDE.md sizes across projects</p>
+        </div>
+        <div class="chart-wrap chart-wrap-h"><canvas id="chart-claude-ctx"></canvas></div>
+        <div id="chart-claude-ctx-empty" class="chart-empty" hidden>No CLAUDE.md files found</div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-head">
+          <h2>Codex context files</h2>
+          <p class="muted">AGENTS.md sizes across projects</p>
+        </div>
+        <div class="chart-wrap chart-wrap-h"><canvas id="chart-codex-ctx"></canvas></div>
+        <div id="chart-codex-ctx-empty" class="chart-empty" hidden>No AGENTS.md files found</div>
+      </div>
+    </section>
+  </main>
+
+<!-- Modal & toast container -->
+<div id="modal-overlay" class="modal-overlay" hidden>
+  <div class="modal" id="modal-box">
+    <button class="modal-close" id="modal-close">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+<div id="toast-stack" class="toast-stack"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
