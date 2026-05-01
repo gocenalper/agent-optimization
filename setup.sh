@@ -31,11 +31,11 @@ echo "✓ Docker is running ($(docker context show))"
 
 # 2. Build & start with compose
 # Check for API key
-if [ ! -f "$SCRIPT_DIR/.env" ] || ! grep -q "sk-ant-" "$SCRIPT_DIR/.env" 2>/dev/null; then
+if [ ! -f "$SCRIPT_DIR/.env" ] || ! grep -q "OPENAI_API_KEY=.*sk-" "$SCRIPT_DIR/.env" 2>/dev/null; then
   echo ""
-  echo "⚠  No ANTHROPIC_API_KEY found in .env"
-  echo "   → Get a key at https://console.anthropic.com/settings/keys"
-  echo "   → Add to $SCRIPT_DIR/.env:  ANTHROPIC_API_KEY=sk-ant-..."
+  echo "⚠  No OPENAI_API_KEY found in .env"
+  echo "   → Add to $SCRIPT_DIR/.env:  OPENAI_API_KEY=sk-..."
+  echo "   → Optional: OPENAI_ANALYSIS_MODEL=gpt-5.4-mini"
   echo "   → App will use heuristic fallback until key is set"
   echo ""
 fi

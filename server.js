@@ -15,7 +15,7 @@ import { previewActuator, commitActuator } from './actuators.js';
 const HOME = process.env.HOST_HOME || os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude', 'projects');
 const CODEX_DIR = path.join(HOME, '.codex', 'sessions');
-const PORT = 4317;
+const PORT = Number(process.env.PORT || 4317);
 
 // ---------- Parsers ----------
 
@@ -356,6 +356,10 @@ for (const s of cache.sessions) lastSessionsBySig.set(s.id, sessionSig(s));
 
 app.use(express.static('public'));
 
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
+});
+
 app.get('/api/data', (req, res) => {
   res.json(cache);
 });
@@ -512,8 +516,8 @@ async function generateAnalysis() {
   const report = runAnalysis(cache.sessions);
   report.nextRunAt = new Date(Date.now() + TWO_HOURS_MS).toISOString();
 
-  // LLM enrichment — replace heuristic findings with Haiku analysis.
-  // Uses Claude Code's OAuth session via bundled claude.exe. No API key needed.
+  // LLM enrichment — replace heuristic findings with GPT analysis when configured.
+  // Sends aggregated stats only; falls back to heuristics when OPENAI_API_KEY is absent.
   {
     const sessionsByProject = new Map();
     for (const s of cache.sessions) {
@@ -522,21 +526,26 @@ async function generateAnalysis() {
       sessionsByProject.get(key).push(s);
     }
     const llmResults = await runLLMAnalysis(report.projects, sessionsByProject);
+    const llmMeta = llmResults.__meta || {};
+    let llmProjectCount = 0;
     for (const proj of report.projects) {
       const r = llmResults[proj.project];
       if (r && !r.skipped && !r.error && r.findings?.length >= 0) {
         proj.findings = r.findings;
         proj.llmAnalyzed = !r.fromCache;
         proj.llmCached = !!r.fromCache;
-        // Recalculate wastedCost from LLM findings (use impact as text — no numeric metric)
+        proj.llmModel = llmMeta.model;
+        llmProjectCount++;
+        // Recalculate wastedCost from normalized LLM finding metrics.
         proj.wastedCost = proj.findings.reduce((a, f) => {
-          const match = (f.impact || '').match(/\$([0-9,]+(\.[0-9]+)?)/);
-          return a + (match ? parseFloat(match[1].replace(/,/g, '')) : 0);
+          return a + (f.metric?.wastedCost ?? f.metric?.savings ?? f.metric?.cost ?? 0);
         }, 0);
       }
     }
     report.projects.sort((a, b) => b.wastedCost - a.wastedCost);
-    report.llmPowered = true;
+    report.llmPowered = !!llmMeta.enabled && llmProjectCount > 0;
+    report.llmProvider = llmMeta.enabled ? 'openai' : null;
+    report.llmModel = llmMeta.model;
   }
 
   const realized = reconcileApplied(report);
