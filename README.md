@@ -49,6 +49,14 @@ Each finding includes a **projected savings estimate**, a concrete recommendatio
 - **Claude context files** — horizontal bar chart of every `CLAUDE.md` across your projects, sized by byte count
 - **Codex context files** — same for `AGENTS.md`
 
+### 📤 Export — Excel-ready workbook
+
+Download a multi-sheet `.xlsx` from the Export tab or directly from `http://localhost:4317/api/export.xlsx`.
+
+- Summary, Sessions, Projects, Daily Usage
+- Analysis Projects, Findings, Finding Examples, Applied Actions
+- Context Files, Wire Stats, and a sheet dictionary
+
 ### ⚡ Delta WebSocket updates
 The dashboard never sends a full payload twice. Only changed sessions are pushed on each update — typically **99%+ bandwidth reduction** vs naive full-refresh, visible in the footer.
 

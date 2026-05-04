@@ -9,6 +9,7 @@ import { computeCost } from './pricing.js';
 import { runAnalysis } from './analysis.js';
 import { runLLMAnalysis } from './llm-analysis.js';
 import { previewActuator, commitActuator } from './actuators.js';
+import { buildExcelExport, collectContextFiles, makeExportFilename } from './excel-export.js';
 
 // HOST_HOME is set by Docker to the mounted home dir path.
 // Falls back to os.homedir() for local dev.
@@ -771,75 +772,18 @@ app.get('/api/charts/usage', (req, res) => {
 });
 
 app.get('/api/charts/context-files', (req, res) => {
-  const seen = new Set();
-  const results = [];
-
-  const addFile = (full, label, type, source) => {
-    if (seen.has(full)) return;
-    try {
-      const stat = fs.statSync(full);
-      if (!stat.isFile()) return;
-      seen.add(full);
-      const content = fs.readFileSync(full, 'utf8');
-      results.push({ path: full, label, bytes: stat.size, lines: content.split('\n').length, type, source });
-    } catch {}
-  };
-
-  const scanDir = (dir, label) => {
-    addFile(path.join(dir, 'CLAUDE.md'),             label, 'CLAUDE.md', 'claude');
-    addFile(path.join(dir, '.claude', 'CLAUDE.md'),  label, 'CLAUDE.md', 'claude');
-    addFile(path.join(dir, 'AGENTS.md'),             label, 'AGENTS.md', 'codex');
-    addFile(path.join(dir, '.codex', 'AGENTS.md'),   label, 'AGENTS.md', 'codex');
-  };
-
-  // Global
-  scanDir(HOME, 'Global (~)');
-  scanDir(path.join(HOME, '.claude'), 'Global Claude (~/.claude)');
-  scanDir(path.join(HOME, '.codex'),  'Global Codex (~/.codex)');
-
-  // All first-level dirs under Desktop, Documents, and HOME
-  const roots = [
-    path.join(HOME, 'Desktop'),
-    path.join(HOME, 'Documents'),
-    HOME,
-  ];
-  for (const root of roots) {
-    try {
-      const entries = fs.readdirSync(root, { withFileTypes: true });
-      for (const e of entries) {
-        if (!e.isDirectory() || e.name.startsWith('.')) continue;
-        const dir = path.join(root, e.name);
-        scanDir(dir, e.name);
-        // One level deeper (monorepos / nested projects)
-        try {
-          for (const sub of fs.readdirSync(dir, { withFileTypes: true })) {
-            if (!sub.isDirectory() || sub.name.startsWith('.')) continue;
-            scanDir(path.join(dir, sub.name), `${e.name}/${sub.name}`);
-          }
-        } catch {}
-      }
-    } catch {}
-  }
-
-  // Session-known paths that exist
-  for (const s of cache.sessions) {
-    const p = s.project;
-    if (!p || p === 'unknown' || !fs.existsSync(p)) continue;
-    scanDir(p, s.projectLabel || path.basename(p));
-  }
-
-  results.sort((a, b) => b.bytes - a.bytes);
+  const contextFiles = collectContextFiles(HOME, cache.sessions);
   res.json({
-    claude: results.filter(r => r.source === 'claude'),
-    codex:  results.filter(r => r.source === 'codex'),
+    claude: contextFiles.claude,
+    codex: contextFiles.codex,
   });
 });
 
-app.get('/api/wirestats', (req, res) => {
+function wireStatsSnapshot() {
   const sentBytes = wireStats.fullSent === 0 ? wireStats.patchBytes :
     /* fullSent represents init payloads to clients, patchBytes is delta traffic */
     wireStats.patchBytes + (wireStats.fullSent > 1 ? 0 : 0);
-  res.json({
+  return {
     patchSent: wireStats.patchSent,
     fullSent: wireStats.fullSent,
     patchBytes: wireStats.patchBytes,
@@ -848,7 +792,37 @@ app.get('/api/wirestats', (req, res) => {
     savedBytes: Math.max(0, wireStats.fullBytes - wireStats.patchBytes),
     savedPct: wireStats.fullBytes > 0 ? (1 - wireStats.patchBytes / wireStats.fullBytes) : 0,
     uptimeSec: Math.round((Date.now() - wireStats.start) / 1000),
-  });
+    sentBytes,
+  };
+}
+
+app.get('/api/wirestats', (req, res) => {
+  res.json(wireStatsSnapshot());
+});
+
+app.get('/api/export.xlsx', (req, res) => {
+  try {
+    refresh();
+    const generatedAt = new Date();
+    const report = analysisCache || runAnalysis(cache.sessions);
+    const buffer = buildExcelExport({
+      cache,
+      analysis: report,
+      applied,
+      contextFiles: collectContextFiles(HOME, cache.sessions),
+      wireStats: wireStatsSnapshot(),
+      home: HOME,
+      generatedAt,
+    });
+    const filename = makeExportFilename(generatedAt);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.send(buffer);
+  } catch (e) {
+    console.error('[export] failed', e);
+    res.status(500).json({ error: 'export failed', detail: String(e) });
+  }
 });
 
 loadApplied();

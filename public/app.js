@@ -38,6 +38,20 @@ const COLORS = {
 let currentFilter = 'all';
 let currentCache = null;
 
+const EXPORT_SHEETS = [
+  ['Summary', 'Export metadata and top-level totals'],
+  ['Sessions', 'Every Claude Code and Codex session'],
+  ['Projects', 'Project rollups with token and cost totals'],
+  ['Daily Usage', 'Daily source-level token and cost rollups'],
+  ['Analysis Projects', 'Optimization analysis by project'],
+  ['Findings', 'Flattened waste findings and recommendations'],
+  ['Finding Examples', 'Sample sessions behind each finding'],
+  ['Applied Actions', 'Tracked applied suggestions and savings'],
+  ['Context Files', 'CLAUDE.md and AGENTS.md inventory'],
+  ['Wire Stats', 'Live delta traffic telemetry'],
+  ['Dictionary', 'Sheet guide and row counts'],
+];
+
 function setKpiCost(elId, usd) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -195,6 +209,8 @@ function render(cache, animate = false) {
     const m = hash.match(/^#\/projects\/(.+)$/);
     if (m) renderProjectDetail(decodeURIComponent(m[1]));
     else renderProjectsList(buildProjects(cache.sessions));
+  } else if (hash.startsWith('#/export')) {
+    renderExportPanel();
   }
 }
 
@@ -465,6 +481,8 @@ function renderAnalysis(report) {
       else proj.setAttribute('open', '');
     });
   });
+
+  if ((location.hash || '').startsWith('#/export')) renderExportPanel();
 }
 
 function renderAnaProject(p, openFirst) {
@@ -960,6 +978,64 @@ document.querySelectorAll('.chip[data-pfilter]').forEach(btn => {
   });
 });
 
+// ===== Export view =====
+
+function renderExportPanel() {
+  if (!currentCache) return;
+  const projects = buildProjects(currentCache.sessions || []);
+  const findings = (analysisCache?.projects || []).reduce((sum, p) => sum + (p.findings?.length || 0), 0);
+  const totalCost = currentCache.summary?.totals?.cost?.total || 0;
+
+  document.getElementById('export-sessions').textContent = fmt(currentCache.summary?.totals?.sessions || 0);
+  document.getElementById('export-projects').textContent = fmt(projects.length);
+  document.getElementById('export-findings').textContent = fmt(findings);
+  document.getElementById('export-cost').textContent = fmtUSD(totalCost);
+  document.getElementById('export-cost').title = fmtUSDFull(totalCost);
+
+  const updated = document.getElementById('export-updated');
+  if (updated) {
+    const date = new Date(currentCache.ts || Date.now());
+    updated.textContent = `Last scan ${date.toLocaleString('tr-TR')}`;
+  }
+
+  const grid = document.getElementById('export-sheet-grid');
+  if (grid) {
+    grid.innerHTML = EXPORT_SHEETS.map(([name, desc], idx) => `
+      <div class="export-sheet">
+        <span class="export-sheet-num">${String(idx + 1).padStart(2, '0')}</span>
+        <div>
+          <h3>${escapeHtml(name)}</h3>
+          <p>${escapeHtml(desc)}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+document.getElementById('export-refresh')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
+  try {
+    const r = await fetch('/api/refresh');
+    render(await r.json(), true);
+    renderExportPanel();
+  } catch (err) {
+    showErrorModal('Could not refresh export data', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh scan';
+  }
+});
+
+document.getElementById('export-download')?.addEventListener('click', () => {
+  showToast({
+    title: 'Excel export',
+    body: 'Preparing the workbook with all current dashboard data.',
+    durationMs: 3500,
+  });
+});
+
 // ===== Routing =====
 
 function route() {
@@ -967,6 +1043,7 @@ function route() {
   const overview = document.getElementById('view-overview');
   const projectsView = document.getElementById('view-projects');
   const analysisView = document.getElementById('view-analysis');
+  const exportView = document.getElementById('view-export');
   const listWrap = document.getElementById('projects-list-wrap');
   const detail = document.getElementById('project-detail');
 
@@ -975,6 +1052,7 @@ function route() {
   overview.hidden = true;
   projectsView.hidden = true;
   analysisView.hidden = true;
+  exportView.hidden = true;
   document.getElementById('view-charts').hidden = true;
 
   if (hash.startsWith('#/projects')) {
@@ -1003,6 +1081,11 @@ function route() {
     document.getElementById('view-charts').hidden = false;
     document.querySelector('.tab[data-route="charts"]').classList.add('active');
     loadCharts();
+  } else if (hash.startsWith('#/export')) {
+    exportView.hidden = false;
+    document.querySelector('.tab[data-route="export"]').classList.add('active');
+    if (!analysisCache) fetch('/api/analysis').then(r => r.json()).then(renderAnalysis).catch(() => {});
+    renderExportPanel();
   } else {
     overview.hidden = false;
     document.querySelector('.tab[data-route="overview"]').classList.add('active');
