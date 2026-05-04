@@ -35,6 +35,7 @@
       <a href="#/projects" class="tab" data-route="projects">Projects</a>
       <a href="#/analysis" class="tab" data-route="analysis">Analysis</a>
       <a href="#/charts" class="tab" data-route="charts">Charts</a>
+      <a href="#/export" class="tab" data-route="export">Export</a>
     </nav>
     <div class="status">
       <span class="dot" id="conn-dot"></span>
@@ -247,7 +248,7 @@
         <div>
           <div style="display:flex; align-items:center; gap:10px;">
             <h2 style="font-size:20px; font-weight:700; letter-spacing:-0.02em;">Optimization Analysis</h2>
-            <span id="llm-badge" hidden class="llm-badge">✦ Haiku</span>
+            <span id="llm-badge" hidden class="llm-badge">✦ GPT</span>
             <span id="heuristic-badge" hidden class="heuristic-badge">⚙ Heuristic</span>
           </div>
           <p class="muted">Auto-runs every 2 hours · scans every project's sessions for wasteful patterns</p>
@@ -298,6 +299,50 @@
     </div>
 
     <section id="ana-project-list" class="ana-projects"></section>
+  </main>
+
+  <main id="view-export" hidden>
+    <section class="card export-hero">
+      <div class="card-head row" style="align-items:flex-start;">
+        <div>
+          <h2 style="font-size:20px; font-weight:700; letter-spacing:-0.02em;">Excel Export</h2>
+          <p class="muted">Workbook-ready data from sessions, projects, analysis, context files and telemetry</p>
+        </div>
+        <div class="export-actions">
+          <button id="export-refresh" class="chip">Refresh scan</button>
+          <a id="export-download" class="btn-primary export-download" href="/api/export.xlsx">Download XLSX</a>
+        </div>
+      </div>
+      <div class="export-kpis">
+        <div class="ana-kpi">
+          <div class="kpi-label">Sessions</div>
+          <div class="ana-kpi-val" id="export-sessions">—</div>
+        </div>
+        <div class="ana-kpi">
+          <div class="kpi-label">Projects</div>
+          <div class="ana-kpi-val" id="export-projects">—</div>
+        </div>
+        <div class="ana-kpi">
+          <div class="kpi-label">Findings</div>
+          <div class="ana-kpi-val" id="export-findings">—</div>
+        </div>
+        <div class="ana-kpi">
+          <div class="kpi-label">Estimated Cost</div>
+          <div class="ana-kpi-val" id="export-cost">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head row">
+        <div>
+          <h2>Workbook Sheets</h2>
+          <p class="muted">Flattened for Excel filters, pivots and imports</p>
+        </div>
+        <span class="export-updated" id="export-updated">—</span>
+      </div>
+      <div class="export-sheet-grid" id="export-sheet-grid"></div>
+    </section>
   </main>
 
   <footer>

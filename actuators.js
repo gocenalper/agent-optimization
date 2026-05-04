@@ -145,7 +145,7 @@ function extractDiffSnippet(before, after) {
 function previewOverpoweredModel(projectPath, sessions) {
   // Choose target tier based on what was actually flagged. Default to Sonnet.
   const flagged = sessions.filter(s =>
-    /opus|gpt-5|^o1$/i.test(s.model || '') &&
+    (/opus|^o1$/i.test(s.model || '') || (/gpt-5/i.test(s.model || '') && !/mini/i.test(s.model || ''))) &&
     (s.output || 0) < 2000 && (s.total || 0) < 100_000
   );
   if (!flagged.length) {
@@ -254,7 +254,7 @@ export function previewActuator(findingId, project, sessions) {
     case 'fragmented-sessions':
       return behavioral('Fragmenting comes from CLI usage patterns. Tracking only.');
     default:
-      return { actionable: false, reason: 'Unknown finding type.' };
+      return behavioral('This LLM recommendation is advisory and has no safe file-level automation yet. Tracking only.');
   }
 }
 

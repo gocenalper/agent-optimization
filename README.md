@@ -31,7 +31,7 @@ Group sessions by project. Click into any project to see every session that ran 
 - Per-session table with session name (first user message), model, all token buckets + cost
 
 ### 🔬 Analysis — LLM-powered waste detection
-Every 2 hours, Claude Haiku analyses your projects using your existing OAuth session — **no API key needed**.
+Every 2 hours, GPT 5.4 mini analyzes your projects using aggregated token statistics. Set `OPENAI_API_KEY` to enable LLM recommendations; without it, the dashboard falls back to heuristic analysis.
 
 **Detected patterns:**
 - 🔴 Context bloat — loading huge context for minimal output
@@ -49,6 +49,14 @@ Each finding includes a **projected savings estimate**, a concrete recommendatio
 - **Claude context files** — horizontal bar chart of every `CLAUDE.md` across your projects, sized by byte count
 - **Codex context files** — same for `AGENTS.md`
 
+### 📤 Export — Excel-ready workbook
+
+Download a multi-sheet `.xlsx` from the Export tab or directly from `http://localhost:4317/api/export.xlsx`.
+
+- Summary, Sessions, Projects, Daily Usage
+- Analysis Projects, Findings, Finding Examples, Applied Actions
+- Context Files, Wire Stats, and a sheet dictionary
+
 ### ⚡ Delta WebSocket updates
 The dashboard never sends a full payload twice. Only changed sessions are pushed on each update — typically **99%+ bandwidth reduction** vs naive full-refresh, visible in the footer.
 
@@ -62,7 +70,7 @@ The dashboard never sends a full payload twice. Only changed sessions are pushed
 **Projects** — every project as a card with tokens, cost, composition bar and per-category breakdown
 ![Projects](public/screenshots/projects.jpg)
 
-**Analysis** — Haiku-powered waste detection, per-project findings with severity, impact $ and apply button
+**Analysis** — GPT-powered waste detection, per-project findings with severity, impact $ and apply button
 ![Analysis](public/screenshots/analysis.jpg)
 
 **Charts** — daily token/cost bar chart (Today / 7 Days / 30 Days) and context file size inventory
@@ -109,15 +117,18 @@ npm run dev
 
 ## LLM Analysis setup (optional but recommended)
 
-The Analysis page works out of the box using **Claude Code's OAuth session** — the same login as your `claude` CLI. No API key needed.
+The Analysis page uses OpenAI's Responses API with `gpt-5.4-mini` by default.
 
-If the analysis shows `⚙ Heuristic` instead of `✦ Haiku`, check that `claude` CLI is authenticated:
+Create `.env` from the example and set your API key:
 
 ```bash
-claude --version  # should respond without prompting for login
+cp .env.example .env
+# edit .env:
+# OPENAI_API_KEY=sk-...
+# OPENAI_ANALYSIS_MODEL=gpt-5.4-mini
 ```
 
-The tool shells out to the bundled `claude.exe` binary in `node_modules/@anthropic-ai/claude-code/bin/` with `HOME` pointing at your host home directory, so it picks up your existing OAuth tokens automatically.
+If the analysis shows `⚙ Heuristic` instead of `✦ gpt-5.4-mini`, the OpenAI key is missing or the analysis request failed.
 
 ---
 
@@ -143,11 +154,11 @@ The tool shells out to the bundled `claude.exe` binary in `node_modules/@anthrop
                               │   Chart.js for charts       │
                               └────────────────────────────┘
 
-Every 2h:  claude.exe (Haiku, OAuth) ──► per-project analysis
+Every 2h:  OpenAI Responses API (gpt-5.4-mini) ──► per-project analysis
            results cached, delta-pushed via WebSocket
 ```
 
-**Data never leaves your machine.** Session files are read locally. The only outbound traffic is the Haiku analysis call — which sends only aggregated stats (no conversation content).
+Session files are read locally. The only outbound analysis traffic sends aggregated stats (no conversation content) to OpenAI when `OPENAI_API_KEY` is configured.
 
 ---
 
@@ -174,14 +185,14 @@ File watching uses polling inside Docker (`USE_POLLING=true`) because Mac's FUSE
 
 | File | Purpose |
 |---|---|
-| `.env` | `ANTHROPIC_API_KEY` if you prefer API key over OAuth |
-| `pricing.js` | Token rates per model — update when Anthropic changes pricing |
+| `.env` | `OPENAI_API_KEY` and optional `OPENAI_ANALYSIS_MODEL` |
+| `pricing.js` | Token rates per model — update when providers change pricing |
 | `docker-compose.yml` | Port, volume mounts, polling interval |
 | `com.agent-optimization.plist` | macOS LaunchAgent definition |
 
 ### Supported models (pricing)
 
-Claude Opus 4/3.5/3 · Claude Sonnet 4/3.5/3 · Claude Haiku 4/3.5/3 · GPT-5 · GPT-4o · GPT-4.1 · o1 · o3 · o4-mini · Codex-mini
+Claude Opus 4/3.5/3 · Claude Sonnet 4/3.5/3 · Claude Haiku 4/3.5/3 · GPT-5 · GPT-5.4 mini · GPT-4o · GPT-4.1 · o1 · o3 · o4-mini · Codex-mini
 
 Unknown models fall back to Sonnet-tier pricing with a `≈` indicator.
 
@@ -218,7 +229,7 @@ docker compose up -d --build   # rebuilds image with new code
 - **Server:** Express + `ws` WebSocket + `chokidar` file watcher
 - **Frontend:** Vanilla JS, Chart.js — no build step, no framework
 - **Container:** Docker / OrbStack, `node:22-alpine`
-- **Analysis:** `@anthropic-ai/claude-code` (bundled `claude.exe`, OAuth auth)
+- **Analysis:** OpenAI Responses API (`gpt-5.4-mini` by default)
 
 ---
 

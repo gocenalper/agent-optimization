@@ -38,6 +38,20 @@ const COLORS = {
 let currentFilter = 'all';
 let currentCache = null;
 
+const EXPORT_SHEETS = [
+  ['Summary', 'Export metadata and top-level totals'],
+  ['Sessions', 'Every Claude Code and Codex session'],
+  ['Projects', 'Project rollups with token and cost totals'],
+  ['Daily Usage', 'Daily source-level token and cost rollups'],
+  ['Analysis Projects', 'Optimization analysis by project'],
+  ['Findings', 'Flattened waste findings and recommendations'],
+  ['Finding Examples', 'Sample sessions behind each finding'],
+  ['Applied Actions', 'Tracked applied suggestions and savings'],
+  ['Context Files', 'CLAUDE.md and AGENTS.md inventory'],
+  ['Wire Stats', 'Live delta traffic telemetry'],
+  ['Dictionary', 'Sheet guide and row counts'],
+];
+
 function setKpiCost(elId, usd) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -195,6 +209,8 @@ function render(cache, animate = false) {
     const m = hash.match(/^#\/projects\/(.+)$/);
     if (m) renderProjectDetail(decodeURIComponent(m[1]));
     else renderProjectsList(buildProjects(cache.sessions));
+  } else if (hash.startsWith('#/export')) {
+    renderExportPanel();
   }
 }
 
@@ -421,7 +437,9 @@ function renderAnalysis(report) {
   updateNextRunCountdown();
 
   // LLM / heuristic badge
-  document.getElementById('llm-badge').hidden = !report.llmPowered;
+  const llmBadge = document.getElementById('llm-badge');
+  llmBadge.textContent = report.llmModel ? `✦ ${report.llmModel}` : '✦ GPT';
+  llmBadge.hidden = !report.llmPowered;
   document.getElementById('heuristic-badge').hidden = !!report.llmPowered;
 
   // Tags
@@ -441,7 +459,10 @@ function renderAnalysis(report) {
     ? withFindings
     : withFindings.filter(p => (p.sources || []).includes(analysisSourceFilter));
   if (!visible.length) {
-    wrap.innerHTML = '<div class="ana-empty">All clear — no wasteful patterns detected across your projects. 🎉</div>';
+    const label = analysisSourceFilter === 'all' ? 'projects' : `${analysisSourceFilter} projects`;
+    wrap.innerHTML = `<div class="ana-empty">No ${label} with findings.</div>`;
+    const countEl = document.getElementById('ana-tab-count');
+    if (countEl) countEl.textContent = '0 projects';
     return;
   }
   // Update tab count
@@ -460,16 +481,20 @@ function renderAnalysis(report) {
       else proj.setAttribute('open', '');
     });
   });
+
+  if ((location.hash || '').startsWith('#/export')) renderExportPanel();
 }
 
 function renderAnaProject(p, openFirst) {
   const name = p.projectLabel || deriveProjectLabel(p.project);
+  const safeName = escapeHtml(name);
+  const safeProject = escapeHtml(p.project);
   const initial = name.replace(/\s+\[.*$/, '').trim().charAt(0).toUpperCase();
   const srcPills = (p.sources || []).map(s =>
     `<span class="ana-src-pill ${s}">${s}</span>`
   ).join('');
   const llmTag = (p.llmAnalyzed || p.llmCached)
-    ? `<span class="llm-tag">${p.llmCached ? '✦ cached' : '✦ haiku'}</span>` : '';
+    ? `<span class="llm-tag">${p.llmCached ? '✦ cached' : `✦ ${escapeHtml(p.llmModel || 'GPT')}`}</span>` : '';
   const wastePct = p.totalCost > 0 ? (p.wastedCost / p.totalCost * 100) : 0;
   const findingsHtml = p.findings.map(f => renderFinding(f, p.project)).join('');
   const modelMix = p.modelMix.slice(0, 6).map(m => `
@@ -485,8 +510,8 @@ function renderAnaProject(p, openFirst) {
       <div class="ana-proj-head">
         <div class="proj-icon">${initial}</div>
         <div class="ana-proj-meta">
-          <h3>${name} <span class="ana-src-pills">${srcPills}</span>${llmTag}</h3>
-          <div class="path" title="${p.project}">${p.project}</div>
+          <h3>${safeName} <span class="ana-src-pills">${srcPills}</span>${llmTag}</h3>
+          <div class="path" title="${safeProject}">${safeProject}</div>
         </div>
         <div class="ana-proj-stats">
           <div class="ana-proj-stat">
@@ -571,12 +596,12 @@ function renderFinding(f, projectKey) {
   return `
     <div class="finding" data-sev="${f.severity}" data-applied="${isApplied}">
       <div class="finding-head">
-        <span class="sev-pill">${f.severity}</span>
-        <span class="finding-title">${f.title}</span>
+        <span class="sev-pill">${escapeHtml(f.severity)}</span>
+        <span class="finding-title">${escapeHtml(f.title)}</span>
       </div>
-      <div class="finding-summary">${f.summary}</div>
-      <div class="finding-impact">${f.impact}</div>
-      <div class="finding-rec">${f.recommendation}</div>
+      <div class="finding-summary">${escapeHtml(f.summary)}</div>
+      <div class="finding-impact">${escapeHtml(f.impact)}</div>
+      <div class="finding-rec">${escapeHtml(f.recommendation)}</div>
       <div class="finding-actions">${actionHtml}</div>
       ${banner}
       ${examples ? `<div class="finding-examples-title" style="margin-top:12px;">Sample sessions</div>${examples}` : ''}
@@ -651,6 +676,26 @@ function showToast({ title, body, durationMs = 6000 }) {
     t.classList.add('fade-out');
     setTimeout(() => t.remove(), 350);
   }, durationMs);
+}
+
+async function readJsonOrThrow(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.error) {
+    const message = data.detail || data.error || response.statusText || 'Request failed';
+    throw new Error(message);
+  }
+  return data;
+}
+
+function showErrorModal(title, error) {
+  showModal(`
+    <div class="modal-celebrate">
+      <span class="emoji">⚠️</span>
+      <h2>${escapeHtml(title)}</h2>
+      <p class="subtitle">${escapeHtml(error?.message || String(error || 'Something went wrong.'))}</p>
+      <button class="modal-cta" data-close="modal">Got it</button>
+    </div>
+  `);
 }
 
 const RECOMMENDATION_CHECKLISTS = {
@@ -818,15 +863,18 @@ document.addEventListener('click', async (e) => {
   }
   // Modal "track from now" or "commit" handlers
   if (e.target?.dataset?.action === 'track-only') {
-    const project = decodeURIComponent(e.target.dataset.project);
-    const findingId = e.target.dataset.finding;
-    const r = await fetch('/api/analysis/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, findingId }), // no token = behavioral apply
-    });
-    const data = await r.json();
-    if (data.ok) {
+    const btn = e.target;
+    const project = decodeURIComponent(btn.dataset.project);
+    const findingId = btn.dataset.finding;
+    btn.disabled = true;
+    btn.textContent = 'Tracking…';
+    try {
+      const r = await fetch('/api/analysis/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project, findingId }), // no token = behavioral apply
+      });
+      const data = await readJsonOrThrow(r);
       showAppliedModal({
         findingTitle: data.finding.title,
         findingId,
@@ -835,20 +883,26 @@ document.addEventListener('click', async (e) => {
       });
       const r2 = await fetch('/api/analysis');
       renderAnalysis(await r2.json());
+    } catch (err) {
+      showErrorModal('Could not track suggestion', err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Track from now';
     }
     return;
   }
   if (e.target?.dataset?.action === 'commit') {
-    const token = e.target.dataset.token;
-    e.target.disabled = true;
-    e.target.textContent = 'Applying…';
-    const r = await fetch('/api/analysis/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
-    const data = await r.json();
-    if (data.ok) {
+    const btn = e.target;
+    const token = btn.dataset.token;
+    btn.disabled = true;
+    btn.textContent = 'Applying…';
+    try {
+      const r = await fetch('/api/analysis/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await readJsonOrThrow(r);
       showAppliedModal({
         findingTitle: data.finding.title,
         findingId: data.finding.id,
@@ -858,6 +912,10 @@ document.addEventListener('click', async (e) => {
       });
       const r2 = await fetch('/api/analysis');
       renderAnalysis(await r2.json());
+    } catch (err) {
+      showErrorModal('Could not apply change', err);
+      btn.disabled = false;
+      btn.textContent = 'Apply change';
     }
     return;
   }
@@ -876,20 +934,29 @@ document.addEventListener('click', async (e) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project, findingId }),
       });
-      const preview = await r.json();
+      const preview = await readJsonOrThrow(r);
       showPreviewModal(preview, project, findingId);
+    } catch (err) {
+      showErrorModal('Could not preview suggestion', err);
     } finally {
       btn.disabled = false;
       btn.textContent = 'Apply suggestion →';
     }
   } else if (action === 'unapply') {
-    await fetch('/api/analysis/unapply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, findingId }),
-    });
-    const r2 = await fetch('/api/analysis');
-    renderAnalysis(await r2.json());
+    btn.disabled = true;
+    try {
+      await readJsonOrThrow(await fetch('/api/analysis/unapply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project, findingId }),
+      }));
+      const r2 = await fetch('/api/analysis');
+      renderAnalysis(await r2.json());
+    } catch (err) {
+      showErrorModal('Could not undo suggestion', err);
+    } finally {
+      btn.disabled = false;
+    }
   }
 });
 
@@ -911,6 +978,64 @@ document.querySelectorAll('.chip[data-pfilter]').forEach(btn => {
   });
 });
 
+// ===== Export view =====
+
+function renderExportPanel() {
+  if (!currentCache) return;
+  const projects = buildProjects(currentCache.sessions || []);
+  const findings = (analysisCache?.projects || []).reduce((sum, p) => sum + (p.findings?.length || 0), 0);
+  const totalCost = currentCache.summary?.totals?.cost?.total || 0;
+
+  document.getElementById('export-sessions').textContent = fmt(currentCache.summary?.totals?.sessions || 0);
+  document.getElementById('export-projects').textContent = fmt(projects.length);
+  document.getElementById('export-findings').textContent = fmt(findings);
+  document.getElementById('export-cost').textContent = fmtUSD(totalCost);
+  document.getElementById('export-cost').title = fmtUSDFull(totalCost);
+
+  const updated = document.getElementById('export-updated');
+  if (updated) {
+    const date = new Date(currentCache.ts || Date.now());
+    updated.textContent = `Last scan ${date.toLocaleString('tr-TR')}`;
+  }
+
+  const grid = document.getElementById('export-sheet-grid');
+  if (grid) {
+    grid.innerHTML = EXPORT_SHEETS.map(([name, desc], idx) => `
+      <div class="export-sheet">
+        <span class="export-sheet-num">${String(idx + 1).padStart(2, '0')}</span>
+        <div>
+          <h3>${escapeHtml(name)}</h3>
+          <p>${escapeHtml(desc)}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+document.getElementById('export-refresh')?.addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
+  try {
+    const r = await fetch('/api/refresh');
+    render(await r.json(), true);
+    renderExportPanel();
+  } catch (err) {
+    showErrorModal('Could not refresh export data', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh scan';
+  }
+});
+
+document.getElementById('export-download')?.addEventListener('click', () => {
+  showToast({
+    title: 'Excel export',
+    body: 'Preparing the workbook with all current dashboard data.',
+    durationMs: 3500,
+  });
+});
+
 // ===== Routing =====
 
 function route() {
@@ -918,6 +1043,7 @@ function route() {
   const overview = document.getElementById('view-overview');
   const projectsView = document.getElementById('view-projects');
   const analysisView = document.getElementById('view-analysis');
+  const exportView = document.getElementById('view-export');
   const listWrap = document.getElementById('projects-list-wrap');
   const detail = document.getElementById('project-detail');
 
@@ -926,6 +1052,7 @@ function route() {
   overview.hidden = true;
   projectsView.hidden = true;
   analysisView.hidden = true;
+  exportView.hidden = true;
   document.getElementById('view-charts').hidden = true;
 
   if (hash.startsWith('#/projects')) {
@@ -954,6 +1081,11 @@ function route() {
     document.getElementById('view-charts').hidden = false;
     document.querySelector('.tab[data-route="charts"]').classList.add('active');
     loadCharts();
+  } else if (hash.startsWith('#/export')) {
+    exportView.hidden = false;
+    document.querySelector('.tab[data-route="export"]').classList.add('active');
+    if (!analysisCache) fetch('/api/analysis').then(r => r.json()).then(renderAnalysis).catch(() => {});
+    renderExportPanel();
   } else {
     overview.hidden = false;
     document.querySelector('.tab[data-route="overview"]').classList.add('active');
