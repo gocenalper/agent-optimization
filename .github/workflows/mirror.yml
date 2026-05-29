@@ -1,0 +1,54 @@
+name: Mirror to GitLab
+
+# GitHub -> GitLab tek yönlü ayna.
+# Her push'ta (tüm branch/tag) ve manuel tetiklemede çalışır.
+# GitLab projesi yoksa API ile BOŞ oluşturur (README yok -> divergence yok),
+# sonra normal push ile eşitler.
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure GitLab project exists
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            "https://gitlab.com/api/v4/projects/gocenalper%2F${REPO_NAME}")
+          if [ "$CODE" = "200" ]; then
+            echo "GitLab projesi mevcut."
+          else
+            echo "GitLab projesi yok (HTTP $CODE), boş olarak oluşturuluyor..."
+            curl -s --fail --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+              --data "name=${REPO_NAME}" \
+              --data "path=${REPO_NAME}" \
+              --data "visibility=private" \
+              --data "initialize_with_readme=false" \
+              "https://gitlab.com/api/v4/projects" > /dev/null
+            echo "Oluşturuldu: gocenalper/${REPO_NAME} (private)"
+          fi
+
+      - name: Push to GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          GITLAB_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/gocenalper/${REPO_NAME}.git"
+          # Boş projeye ilk push main'i oluşturur; sonrakiler fast-forward.
+          git push "$GITLAB_URL" "HEAD:${GITHUB_REF_NAME}"
+          git push --tags "$GITLAB_URL" || true
+          echo "Mirrored ${GITHUB_REPOSITORY} -> gitlab.com/gocenalper/${REPO_NAME}"
