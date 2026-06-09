@@ -1,5 +1,7 @@
 # Agent Optimization
 
+[![Available on CodeGuilds](https://img.shields.io/badge/Available_on-CodeGuilds-6366f1)](https://codeguilds.dev/packages/agent-optimization)
+
 > **Live token & cost monitor for Claude Code and Codex sessions.**  
 > Tracks every API call you make, finds what's wasting money, and lets you fix it — automatically.
 
