@@ -9,9 +9,9 @@ const SEVERITY_ORDER = { critical: 3, high: 2, medium: 1, low: 0 };
 
 const tier = (model) => {
   if (!model) return 'unknown';
+  if (/haiku|mini/i.test(model)) return 'cheap';
   if (/opus|gpt-5|^o1$/i.test(model)) return 'premium';
   if (/sonnet|gpt-4o$|gpt-4\.1$|^o3$/i.test(model)) return 'mid';
-  if (/haiku|mini/i.test(model)) return 'cheap';
   return 'mid';
 };
 
@@ -52,7 +52,7 @@ function findCacheInefficiency(sessions) {
 }
 
 function findExpensiveTinyTasks(sessions) {
-  // Premium-tier sessions that did very little work — Sonnet/Haiku would have sufficed.
+  // Premium-tier sessions that did very little work — a mid/cheap model would have sufficed.
   const out = [];
   for (const s of sessions) {
     if (tier(s.model) !== 'premium') continue;

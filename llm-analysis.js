@@ -1,28 +1,82 @@
-// LLM-powered analysis using Claude Code's OAuth session.
-// Shells out to the bundled claude.exe binary — no API key required.
-// Uses the same Max subscription auth as the CLI.
+// LLM-powered analysis using OpenAI.
+// Sends aggregated project/session stats only, not conversation content.
 
-import { spawn } from 'child_process';
-import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { fileURLToPath } from 'url';
 
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const HOME = process.env.HOST_HOME || os.homedir();
 const CACHE_FILE = path.join(HOME, '.agent-optimization', 'llm-cache.json');
-const MODEL = 'claude-haiku-4-5-20251001';
+
+function loadProjectEnv() {
+  const envPath = path.join(MODULE_DIR, '.env');
+  if (!fs.existsSync(envPath)) return;
+  for (const raw of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    let line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('export ')) line = line.slice('export '.length).trim();
+    const idx = line.indexOf('=');
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadProjectEnv();
+
+export const ANALYSIS_MODEL =
+  (process.env.OPENAI_ANALYSIS_MODEL || process.env.OPENAI_MODEL || 'gpt-5.4-mini').trim() ||
+  'gpt-5.4-mini';
 const MAX_CONCURRENT = 4;
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
-// Resolve bundled claude binary
-const require = createRequire(import.meta.url);
-const CLAUDE_BIN = (() => {
-  try {
-    return require.resolve('@anthropic-ai/claude-code/bin/claude.exe');
-  } catch {
-    return process.env.CLAUDE_BIN || 'claude';
-  }
-})();
+const OPENAI_RESPONSES_URL =
+  (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/$/, '') +
+  '/v1/responses';
+
+export const SUPPORTED_FINDING_IDS = [
+  'context-bloat',
+  'cache-inefficiency',
+  'overpowered-model',
+  'output-heavy',
+  'reasoning-waste',
+  'fragmented-sessions',
+];
+
+const FINDING_ID_ALIASES = {
+  context_bloat: 'context-bloat',
+  cache_inefficiency: 'cache-inefficiency',
+  cache_misuse: 'cache-inefficiency',
+  cache_rewrite: 'cache-inefficiency',
+  overpowered_model: 'overpowered-model',
+  premium_model: 'overpowered-model',
+  output_heavy: 'output-heavy',
+  verbose_output: 'output-heavy',
+  reasoning_waste: 'reasoning-waste',
+  fragmented_sessions: 'fragmented-sessions',
+};
+
+const FINDING_SCHEMA = {
+  type: 'array',
+  minItems: 0,
+  maxItems: 4,
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'title', 'severity', 'summary', 'impact', 'recommendation'],
+    properties: {
+      id: { type: 'string', enum: SUPPORTED_FINDING_IDS },
+      title: { type: 'string', maxLength: 80 },
+      severity: { type: 'string', enum: ['high', 'medium', 'low'] },
+      summary: { type: 'string', maxLength: 320 },
+      impact: { type: 'string', maxLength: 160 },
+      recommendation: { type: 'string', maxLength: 260 },
+    },
+  },
+};
 
 // ---------- File-based cache ----------
 
@@ -40,7 +94,7 @@ loadCache();
 
 function projectFingerprint(proj) {
   const c = proj.cost?.total || 0;
-  return `${proj.sessionCount}|${Math.round((proj.total || 0) / 1e6)}|${c.toFixed(1)}`;
+  return `${ANALYSIS_MODEL}|${proj.sessionCount}|${Math.round((proj.total || 0) / 1e6)}|${c.toFixed(1)}`;
 }
 
 // ---------- Prompt ----------
@@ -114,47 +168,115 @@ Top sessions by cost:
 ${topSessions || '  none'}
 
 Return ONLY a JSON array (0–4 findings). Empty array [] if usage looks healthy.
+Use ONLY these exact id values:
+  - context-bloat
+  - cache-inefficiency
+  - overpowered-model
+  - output-heavy
+  - reasoning-waste
+  - fragmented-sessions
 Each object:
-{"id":"snake_case","title":"max 8 words","severity":"high|medium|low","summary":"1-2 sentences on observed pattern","impact":"specific $ estimate","recommendation":"one concrete action"}
+{"id":"one exact id from the list","title":"max 8 words","severity":"high|medium|low","summary":"1-2 sentences on observed pattern","impact":"specific $ estimate","recommendation":"one concrete action"}
 No markdown, no explanation. Just the JSON array.`;
 }
 
-// ---------- Claude CLI call ----------
+// ---------- OpenAI Responses API call ----------
 
-function runClaude(prompt) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(CLAUDE_BIN, [
-      '--print',
-      '--model', MODEL,
-      '--output-format', 'text',
-    ], {
-      env: { ...process.env, HOME },
-      timeout: 60_000,
-    });
+export function buildOpenAIRequest(prompt, model = ANALYSIS_MODEL) {
+  return {
+    model,
+    input: prompt,
+    store: false,
+    max_output_tokens: 1200,
+    instructions:
+      'Return only JSON that matches the schema. Use the provided finding ids exactly.',
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'optimization_findings',
+        strict: true,
+        schema: FINDING_SCHEMA,
+      },
+    },
+  };
+}
 
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', d => stdout += d.toString());
-    child.stderr.on('data', d => stderr += d.toString());
-    child.stdin.write(prompt);
-    child.stdin.end();
-    child.on('close', code => {
-      if (code === 0) resolve(stdout.trim());
-      else reject(new Error(stderr.slice(0, 200) || `exit ${code}`));
-    });
-    child.on('error', reject);
+export function responseText(payload) {
+  if (typeof payload?.output_text === 'string') return payload.output_text.trim();
+  for (const item of payload?.output || []) {
+    for (const content of item.content || []) {
+      if (typeof content.text === 'string') return content.text.trim();
+    }
+  }
+  return '';
+}
+
+async function runOpenAI(prompt) {
+  const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
+
+  const response = await fetch(OPENAI_RESPONSES_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildOpenAIRequest(prompt)),
+    signal: AbortSignal.timeout(60_000),
   });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = payload.error?.message || response.statusText || `HTTP ${response.status}`;
+    throw new Error(detail.slice(0, 240));
+  }
+
+  return responseText(payload);
+}
+
+export function extractImpactCost(impact) {
+  const match = String(impact || '').match(/\$([0-9,]+(?:\.[0-9]+)?)/);
+  return match ? parseFloat(match[1].replace(/,/g, '')) : 0;
+}
+
+function normalizeFindingId(id) {
+  const raw = String(id || '').trim();
+  const key = raw.toLowerCase().replace(/\s+/g, '-');
+  const aliasKey = key.replace(/-/g, '_');
+  return FINDING_ID_ALIASES[aliasKey] || key;
+}
+
+export function normalizeLLMFinding(finding) {
+  if (!finding || typeof finding !== 'object') return null;
+  const id = normalizeFindingId(finding.id);
+  if (!SUPPORTED_FINDING_IDS.includes(id)) return null;
+
+  const severity = String(finding.severity || 'low').toLowerCase();
+  const wastedCost = extractImpactCost(finding.impact);
+  return {
+    id,
+    title: String(finding.title || id).slice(0, 100),
+    severity: ['high', 'medium', 'low'].includes(severity) ? severity : 'low',
+    summary: String(finding.summary || '').slice(0, 500),
+    impact: String(finding.impact || '').slice(0, 240),
+    recommendation: String(finding.recommendation || '').slice(0, 500),
+    examples: [],
+    metric: { wastedCost },
+  };
 }
 
 function parseFindings(raw) {
   try {
-    const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) return arr;
+    const parsed = JSON.parse(raw);
+    const arr = Array.isArray(parsed) ? parsed : parsed?.findings;
+    if (Array.isArray(arr)) {
+      return arr.map(normalizeLLMFinding).filter(Boolean).slice(0, 4);
+    }
   } catch {}
   // Strip possible markdown code fence
   const m = raw.match(/\[[\s\S]*?\]/);
   if (m) {
-    try { return JSON.parse(m[0]); } catch {}
+    try { return JSON.parse(m[0]).map(normalizeLLMFinding).filter(Boolean).slice(0, 4); } catch {}
   }
   return [];
 }
@@ -169,7 +291,7 @@ async function analyzeProjectWithLLM(proj, sessions) {
     return { findings: cached.findings, fromCache: true };
   }
 
-  const raw = await runClaude(buildPrompt(proj, sessions));
+  const raw = await runOpenAI(buildPrompt(proj, sessions));
   const findings = parseFindings(raw);
   llmCache[cacheKey] = { findings, ts: new Date().toISOString() };
   saveCache();
@@ -180,8 +302,21 @@ async function analyzeProjectWithLLM(proj, sessions) {
 
 export async function runLLMAnalysis(projects, sessionsByProject) {
   const results = {};
+  const meta = {
+    enabled: !!(process.env.OPENAI_API_KEY || '').trim(),
+    model: ANALYSIS_MODEL,
+    done: 0,
+    cached: 0,
+    errors: 0,
+  };
+  results.__meta = meta;
+
+  if (!meta.enabled) {
+    console.log(`  [llm] skipped — OPENAI_API_KEY is not set (model ${ANALYSIS_MODEL})`);
+    return results;
+  }
+
   const queue = [...projects];
-  let done = 0, cached = 0, errors = 0;
 
   async function worker() {
     while (queue.length) {
@@ -195,17 +330,17 @@ export async function runLLMAnalysis(projects, sessionsByProject) {
       try {
         const r = await analyzeProjectWithLLM(proj, sessions);
         results[proj.project] = r;
-        if (r.fromCache) cached++;
-        else done++;
+        if (r.fromCache) meta.cached++;
+        else meta.done++;
       } catch (e) {
         console.error(`  [llm] ${proj.projectLabel || proj.project}: ${e.message}`);
         results[proj.project] = { findings: [], error: e.message };
-        errors++;
+        meta.errors++;
       }
     }
   }
 
   await Promise.all(Array.from({ length: MAX_CONCURRENT }, worker));
-  console.log(`  [llm] done — ${done} new · ${cached} cached · ${errors} errors`);
+  console.log(`  [llm] ${ANALYSIS_MODEL} — ${meta.done} new · ${meta.cached} cached · ${meta.errors} errors`);
   return results;
 }

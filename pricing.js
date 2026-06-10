@@ -14,6 +14,7 @@ const PRICING = [
   { match: /3-?haiku/i,                               input: 0.25,  output: 1.25,  cacheRead: 0.03,  cacheCreate: 0.30 },
 
   // ---- OpenAI ----
+  { match: /gpt-5(?:\.\d+)?-mini|gpt-5.*mini/i,       input: 0.15,  output: 0.60,  cacheRead: 0.075, cacheCreate: 0 },
   { match: /^gpt-5|gpt5/i,                            input: 2.50,  output: 10.00, cacheRead: 0.25,  cacheCreate: 0 },
   { match: /gpt-4\.1-mini/i,                          input: 0.40,  output: 1.60,  cacheRead: 0.10,  cacheCreate: 0 },
   { match: /gpt-4\.1/i,                               input: 2.00,  output: 8.00,  cacheRead: 0.50,  cacheCreate: 0 },

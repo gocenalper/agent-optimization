@@ -62,6 +62,7 @@ code, .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 18px;
   padding: 24px 36px;
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(12px);
@@ -425,12 +426,14 @@ footer code { background: rgba(255,255,255,0.05); padding: 2px 6px; border-radiu
 @media (max-width: 600px) {
   .kpis { grid-template-columns: 1fr; }
   main { padding: 20px 16px; }
-  .topbar { padding: 16px; }
+  .topbar { padding: 16px; align-items: flex-start; flex-direction: column; }
+  .status { align-self: stretch; justify-content: space-between; }
 }
 
 /* Tabs */
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--border);
@@ -1276,6 +1279,77 @@ footer code { background: rgba(255,255,255,0.05); padding: 2px 6px; border-radiu
 .chart-wrap { position: relative; height: 320px; }
 .chart-wrap-h { position: relative; height: 360px; }
 .chart-empty { text-align: center; padding: 40px; color: var(--text-mute); font-size: 13px; }
+
+/* Export */
+.export-hero {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(34, 211, 238, 0.06));
+  border-color: rgba(52, 211, 153, 0.22);
+}
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.export-download {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  min-height: 38px;
+}
+.export-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+.export-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.export-sheet {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 86px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.035);
+}
+.export-sheet-num {
+  flex: 0 0 auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0a0a14;
+  background: linear-gradient(135deg, #34d399, #22d3ee);
+  border-radius: 7px;
+  padding: 5px 7px;
+}
+.export-sheet h3 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 5px;
+}
+.export-sheet p {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.export-updated {
+  color: var(--text-mute);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+@media (max-width: 800px) {
+  .export-kpis { grid-template-columns: repeat(2, 1fr); }
+  .export-actions { justify-content: flex-start; }
+}
 
 /* Pulse on update */
 .flash {
